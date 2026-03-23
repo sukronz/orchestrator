@@ -245,7 +245,7 @@ class OrchestratorPanel {
 			<p>Secure the keys, define skills, attach them to agents, then run live provider-backed chat and handoff execution.</p>
 			<div class="rule">
 				<strong>Execution flow</strong>
-				<div class="helper">Architect frames, planner sequences, developer implements, reviewer checks, debugger fixes, then reviewer and architect sign off.</div>
+				<div class="helper">Planner builds the backlog and to-do flow first, architect refines the technical design, then developer, reviewer, and debugger work like an agile delivery team before final sign-off.</div>
 			</div>
 		</section>
 
@@ -460,14 +460,11 @@ class OrchestratorPanel {
 	}
 
 	private async createSkill(payload: { name?: string; category?: string; description?: string; instructions?: string }) {
-		const name = payload.name?.trim() ?? '';
-		const description = payload.description?.trim() ?? '';
-		const instructions = payload.instructions?.trim() ?? '';
-		if (!name || !description || !instructions || !isSkillCategory(payload.category)) {
-			void vscode.window.showErrorMessage('Skill name, category, description, and instructions are required.');
-			return;
-		}
-		const nextSkills = [{ id: `skill-${Date.now()}`, name, category: payload.category, description, instructions, createdAt: new Date().toISOString() }, ...this.getSkills()];
+		const category = isSkillCategory(payload.category) ? payload.category : 'custom';
+		const name = withDefaultText(payload.name, getDefaultSkillName(category));
+		const description = withDefaultText(payload.description, getDefaultSkillDescription(category));
+		const instructions = withDefaultText(payload.instructions, getDefaultSkillInstructions(category));
+		const nextSkills = [{ id: `skill-${Date.now()}`, name, category, description, instructions, createdAt: new Date().toISOString() }, ...this.getSkills()];
 		await this.context.globalState.update(SKILLS_STATE_KEY, nextSkills);
 		await this.refresh();
 	}
@@ -637,14 +634,46 @@ class OrchestratorPanel {
 		}
 
 		const stageDefinitions: Array<{ category: SkillCategory; label: string; instructions: string }> = [
-			{ category: 'architect', label: 'Architecture framing', instructions: 'Define the system shape, constraints, interfaces, and success conditions.' },
-			{ category: 'planner', label: 'Execution planning', instructions: 'Break the work into an ordered implementation plan and call out dependencies.' },
-			{ category: 'developer', label: 'Implementation pass', instructions: 'Implement the planned changes and include a change-set block if files should change.' },
-			{ category: 'reviewer', label: 'Review pass', instructions: 'Review for correctness, regressions, tests, and maintainability risks.' },
-			{ category: 'debugger', label: 'Bug fixing', instructions: 'Fix failures and stability issues found during review.' },
-			{ category: 'developer', label: 'Refinement pass', instructions: 'Incorporate fixes and complete any missing implementation details.' },
-			{ category: 'reviewer', label: 'Final review', instructions: 'Validate the result after fixes and confirm readiness.' },
-			{ category: 'architect', label: 'Architecture sign-off', instructions: 'Confirm the result still matches the original design intent.' },
+			{
+				category: 'planner',
+				label: 'Backlog planning',
+				instructions: 'Turn the problem statement into an agile backlog: define goals, user-facing outcomes, ordered to-do items, and delivery milestones.',
+			},
+			{
+				category: 'architect',
+				label: 'Technical design refinement',
+				instructions: 'Review the backlog and turn it into implementation architecture, boundaries, interfaces, and technical constraints for the sprint.',
+			},
+			{
+				category: 'developer',
+				label: 'Sprint implementation',
+				instructions: 'Implement the current sprint tasks from the backlog. Include an orchestrator change-set block if files should change.',
+			},
+			{
+				category: 'reviewer',
+				label: 'Code review',
+				instructions: 'Review the implementation like a real delivery team: correctness, regressions, missing tests, edge cases, and maintainability.',
+			},
+			{
+				category: 'debugger',
+				label: 'Bug fixing and stabilization',
+				instructions: 'Fix issues raised in review or failures discovered during stabilization. Focus on root cause and reliability.',
+			},
+			{
+				category: 'developer',
+				label: 'Rework and completion',
+				instructions: 'Apply follow-up implementation changes after debugging and complete any backlog items still open for the sprint.',
+			},
+			{
+				category: 'reviewer',
+				label: 'Acceptance review',
+				instructions: 'Validate the updated implementation against the backlog and confirm it is ready to close the sprint work.',
+			},
+			{
+				category: 'architect',
+				label: 'Final technical sign-off',
+				instructions: 'Confirm the delivered implementation still matches the intended architecture and technical direction.',
+			},
 		];
 
 		const stages = stageDefinitions.map((definition, index) => {
@@ -745,7 +774,10 @@ class OrchestratorPanel {
 	}
 
 	private getSkills(): SkillDefinition[] {
-		return this.context.globalState.get<SkillDefinition[]>(SKILLS_STATE_KEY, []).filter(isSkillDefinition);
+		return this.context.globalState
+			.get<SkillDefinition[]>(SKILLS_STATE_KEY, [])
+			.map(normalizeSkillDefinition)
+			.filter(isSkillDefinition);
 	}
 
 	private getSkillsForAgent(agent: AgentDefinition): SkillDefinition[] {
@@ -813,6 +845,75 @@ function getRecommendedSkills(): Array<Omit<SkillDefinition, 'id' | 'createdAt'>
 		{ name: 'Code Reviewer', category: 'reviewer', description: 'Checks correctness, quality, and regressions.', instructions: 'Review behavior, edge cases, test coverage, and maintainability. Return precise findings before approval.' },
 		{ name: 'Debugger', category: 'debugger', description: 'Investigates failures and stabilizes the result.', instructions: 'Reproduce bugs, isolate root causes, fix broken flows, and confirm stability before the next review pass.' },
 	];
+}
+
+function normalizeSkillDefinition(skill: SkillDefinition | Partial<SkillDefinition> | unknown): SkillDefinition {
+	const candidate = (skill && typeof skill === 'object' ? skill : {}) as Partial<SkillDefinition>;
+	const category = isSkillCategory(candidate.category) ? candidate.category : 'custom';
+
+	return {
+		id: typeof candidate.id === 'string' && candidate.id.trim().length > 0 ? candidate.id : `skill-recovered-${Date.now()}`,
+		name: withDefaultText(candidate.name, getDefaultSkillName(category)),
+		category,
+		description: withDefaultText(candidate.description, getDefaultSkillDescription(category)),
+		instructions: withDefaultText(candidate.instructions, getDefaultSkillInstructions(category)),
+		createdAt: typeof candidate.createdAt === 'string' && candidate.createdAt.trim().length > 0 ? candidate.createdAt : new Date().toISOString(),
+	};
+}
+
+function withDefaultText(value: string | undefined, fallback: string): string {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function getDefaultSkillName(category: SkillCategory): string {
+	switch (category) {
+		case 'architect':
+			return 'System Architect';
+		case 'planner':
+			return 'Execution Planner';
+		case 'developer':
+			return 'Feature Developer';
+		case 'reviewer':
+			return 'Code Reviewer';
+		case 'debugger':
+			return 'Debugger';
+		case 'custom':
+			return 'Custom Skill';
+	}
+}
+
+function getDefaultSkillDescription(category: SkillCategory): string {
+	switch (category) {
+		case 'architect':
+			return 'Defines boundaries, interfaces, and technical direction.';
+		case 'planner':
+			return 'Breaks work into clear backlog items, milestones, and sprint tasks.';
+		case 'developer':
+			return 'Implements planned code changes and completes delivery tasks.';
+		case 'reviewer':
+			return 'Reviews correctness, quality, regressions, and test coverage.';
+		case 'debugger':
+			return 'Stabilizes the implementation by fixing failures and root causes.';
+		case 'custom':
+			return 'Reusable custom instructions for a sub-agent.';
+	}
+}
+
+function getDefaultSkillInstructions(category: SkillCategory): string {
+	switch (category) {
+		case 'architect':
+			return 'Define the system structure, technical boundaries, interfaces, and final architecture sign-off criteria.';
+		case 'planner':
+			return 'Translate the problem into an ordered to-do list, milestones, and an agile execution plan for the team.';
+		case 'developer':
+			return 'Implement assigned backlog items, describe code changes clearly, and provide an orchestrator change-set when files should change.';
+		case 'reviewer':
+			return 'Review implementation quality, correctness, missing tests, regressions, and readiness for acceptance.';
+		case 'debugger':
+			return 'Investigate issues, isolate root causes, apply reliable fixes, and stabilize the result for re-review.';
+		case 'custom':
+			return 'Use this skill as reusable guidance for the agent during planning, implementation, or review.';
+	}
 }
 
 function isProviderId(value: string | undefined): value is ProviderId {
