@@ -1,12 +1,18 @@
 {
   "name": "orchestrator",
-  "displayName": "orchestrator",
-  "description": "agen orchestrator so you can code ",
+  "displayName": "Orchestrator — AI Coding Team",
+  "description": "Assemble a team of AI sub-agents (Claude, GPT, Gemini), assign skills, and run multi-stage handoff workflows that write code directly to your workspace.",
   "version": "0.0.1",
+  "publisher": "sukronz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sukronz/orchestrator.git"
+  },
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.80.0"
   },
   "categories": [
+    "Machine Learning",
     "Other"
   ],
   "main": "./dist/extension.js",
@@ -41,7 +47,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.110.0",
+    "@types/vscode": "^1.80.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "typescript-eslint": "^8.56.1",
